@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Check, Loader2, ShieldCheck, Smartphone, Wallet } from "lucide-react";
+import { getDefaultPlanById } from "@/lib/plan-data";
 
 const formatVND = (n: number) =>
   new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(n);
@@ -61,25 +62,70 @@ export default function CheckoutPage() {
       return;
     }
 
-    const loadPlan = async () => {
+    const localPlan = (() => {
+      if (typeof window === "undefined") return null;
+      try {
+        const raw = window.sessionStorage.getItem("checkoutPlan");
+        if (!raw) return null;
+        const stored = JSON.parse(raw) as Plan;
+        if (stored?.id === planId) {
+          return stored;
+        }
+      } catch (error) {
+        console.error("Failed to parse cached plan", error);
+      }
+      return null;
+    })();
+
+    const defaultPlan = getDefaultPlanById(planId) ?? null;
+
+    if (localPlan) {
+      setPlan(localPlan);
+      setLoadingError(null);
+      setLoadingPlan(false);
+    } else if (defaultPlan) {
+      setPlan(defaultPlan as Plan);
+      setLoadingError(null);
+      setLoadingPlan(false);
+    } else {
+      setPlan(null);
       setLoadingPlan(true);
+    }
+
+    let cancelled = false;
+
+    const loadPlan = async () => {
       const { data, error } = await supabase
         .from("plans")
         .select("id, name, price, period, perks, description")
         .eq("id", planId)
         .single();
 
+      if (cancelled) {
+        return;
+      }
+
       if (error || !data) {
-        setPlan(null);
-        setLoadingError("not-found");
+        if (!localPlan && !defaultPlan) {
+          setPlan(null);
+          setLoadingError("not-found");
+        }
+        setLoadingPlan(false);
       } else {
         setPlan(data as Plan);
         setLoadingError(null);
+        setLoadingPlan(false);
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem("checkoutPlan", JSON.stringify(data));
+        }
       }
-      setLoadingPlan(false);
     };
 
     loadPlan();
+
+    return () => {
+      cancelled = true;
+    };
   }, [planId]);
 
   const perks = useMemo(() => {
