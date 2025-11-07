@@ -3,6 +3,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { MotionConfig, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -32,6 +33,7 @@ const CLASSES = [
 ];
 
 export default function GymX() {
+  const router = useRouter();
   const [isAuth, setIsAuth] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -64,7 +66,7 @@ export default function GymX() {
   useEffect(() => {
     const load = async () => {
       const { data, error } = await supabase.from('plans').select('*').order('price');
-      if (!error && data) setPlans(data as any);
+      if (!error && data) setPlans(data as Plan[]);
     };
     load();
   }, []);
@@ -79,7 +81,16 @@ export default function GymX() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (!error && data) {
-        const mapped = (data as any[]).map((r) => ({
+        type InvoiceQueryRow = {
+          id: string;
+          plan_id: string;
+          amount: number;
+          method?: string | null;
+          status?: string | null;
+          created_at: string;
+          plans?: { name?: string | null } | null;
+        };
+        const mapped = (data as InvoiceQueryRow[]).map((r) => ({
           id: r.id,
           plan: r.plans?.name ?? r.plan_id,
           amount: r.amount,
@@ -93,41 +104,12 @@ export default function GymX() {
     loadInv();
   }, [userId]);
 
-  const handlePurchase = async (planId: string) => {
-  if (!isAuth || !userId) { setShowLogin(true); setSelectedPlan(planId); return; }
-  const plan = plans.find((p) => p.id === planId);
-  if (!plan) return;
-
-  // MÃ ĐƠN CHỈ SỐ
-  const invoiceId = String(Date.now());
-
-  // Tạo hoá đơn pending
-  const { error: invErr } = await supabase.from("invoices").insert({
-    id: invoiceId,
-    user_id: userId,
-    plan_id: plan.id,
-    amount: plan.price,
-    method: "VNPAY",
-    status: "pending",
-  });
-  if (invErr) { alert("Không tạo được hoá đơn"); return; }
-
-  // Xin link thanh toán
-  const res = await fetch("/api/vnpay/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      orderId: invoiceId,
-      amount: plan.price,
-      orderInfo: `Thanhtoangoi${plan.name}`,
-    }),
-  }).then(r => r.json());
-
-  if (!res?.ok || !res.payUrl) { alert("Không tạo được link thanh toán"); return; }
-
-  // Redirect sang VNPAY
-  window.location.href = res.payUrl;
-};
+  const handlePurchase = (planId: string) => {
+    if (!isAuth || !userId) { setShowLogin(true); setSelectedPlan(planId); return; }
+    const plan = plans.find((p) => p.id === planId);
+    if (!plan) { alert("Gói không tồn tại"); return; }
+    router.push(`/checkout?planId=${planId}`);
+  };
 
 
 
