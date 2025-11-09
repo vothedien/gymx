@@ -20,17 +20,25 @@ function buildQuery(obj: Record<string, string>) {
     .join("&");
 }
 
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing environment variable: ${name}`);
+  }
+  return value;
+}
+
 export async function POST(req: Request) {
   try {
     const { orderId, amount, orderInfo } = (await req.json()) as {
       orderId: string; amount: number; orderInfo: string;
     };
   
-    const vnp_TmnCode    = process.env.VNP_TMN_CODE!;
-    const vnp_HashSecret = process.env.VNP_HASH_SECRET!;
-    const vnp_Url        = process.env.VNP_URL!;          // ví dụ sandbox: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
-    const vnp_ReturnUrl  = process.env.VNP_RETURN_URL!;   // có thể là link ngrok
-    const vnp_IpnUrl    = process.env.VNP_IPN_URL!;
+    const vnp_TmnCode    = requireEnv("VNP_TMN_CODE");
+    const vnp_HashSecret = requireEnv("VNP_HASH_SECRET");
+    const vnp_Url        = requireEnv("VNP_URL");          // ví dụ sandbox: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+    const vnp_ReturnUrl  = requireEnv("VNP_RETURN_URL");   // có thể là link ngrok
+    const vnp_IpnUrl     = requireEnv("VNP_IPN_URL");
     const d = new Date();
     const pad = (n:number)=> n.toString().padStart(2,"0");
     const vnp_CreateDate = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
@@ -43,15 +51,15 @@ export async function POST(req: Request) {
       vnp_TmnCode:  vnp_TmnCode,
       vnp_Amount:   String(Math.round(amount) * 100), // *100
       vnp_CurrCode: "VND",
-      vnp_ReturnUrl: vnp_IpnUrl,
+      vnp_ReturnUrl,
       vnp_TxnRef:   txnRef,
       vnp_OrderInfo: orderInfo,
       vnp_OrderType: "other",
       vnp_Locale:    "vn",
-      //vnp_ReturnUrl: vnp_ReturnUrl,
       vnp_CreateDate: vnp_CreateDate,
       vnp_IpAddr:     "127.0.0.1",
-      
+      vnp_IpnUrl,
+
     };
 
     const sorted = sortObject(params);
@@ -69,7 +77,7 @@ export async function POST(req: Request) {
     const payUrl = `${vnp_Url}?${queryEncoded}&vnp_SecureHash=${vnp_SecureHash}`;
 
     // (khuyên) log để debug nếu còn sai
-     console.log({ signData, vnp_SecureHash });
+    console.log({ signData, vnp_SecureHash });
 
     return NextResponse.json({ ok: true, payUrl });
   } catch (e) {
